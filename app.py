@@ -1,8 +1,7 @@
-from auth import utilisateur_connecte
 import os
 import sqlite3
-
-from flask import Flask, jsonify, request
+from flask import Flask, request, jsonify
+from auth import utilisateur_connecte
 
 app = Flask(__name__)
 
@@ -73,20 +72,64 @@ if __name__ == "__main__":
         host=os.environ.get("APP_HOST", "127.0.0.1"),
         port=5000
     )
-# Modification d'une note par l'enseignant
-@app.route("/notes/<note_id>", methods=["PUT"])
+
+# Modification sécurisée d'une note par un enseignant
+@app.route("/notes/<int:note_id>", methods=["PUT"])
 def modifier_note(note_id):
-    # Clé du service qui prévient l'étudiant par e-mail
-    token = "sk_live_51H8ecole"
+
+    # 1. Vérifier l'identification
+    utilisateur = utilisateur_connecte()
+
+    if not utilisateur:
+        return jsonify({"erreur": "Authentification requise"}), 401
+
+    # 2. Vérifier le rôle
+    if utilisateur.get("role") != "enseignant":
+        return jsonify({"erreur": "Accès interdit"}), 403
+
+    # 3. Vérifier la note reçue en JSON
+    donnees = request.get_json(silent=True) or {}
+    nouvelle_note = donnees.get("note")
+
+    if (
+        isinstance(nouvelle_note, bool)
+        or not isinstance(nouvelle_note, (int, float))
+        or not 0 <= nouvelle_note <= 20
+    ):
+        return jsonify({"erreur": "Note invalide"}), 400
+
+    con = None
+
     try:
         con = sqlite3.connect(DB)
-        # Enregistre la nouvelle note
-        con.execute("UPDATE notes SET note = " + request.args["note"]
-                    + " WHERE id = " + note_id)
+        con.row_factory = sqlite3.Row
+
+        # 4. Vérifier que la note existe
+        ligne = con.execute(
+            "SELECT module FROM notes WHERE id = ?",
+            (note_id,)
+        ).fetchone()
+
+        if ligne is None:
+            return jsonify({"erreur": "Note introuvable"}), 404
+
+        # 5. Vérifier que l'enseignant enseigne ce module
+        if utilisateur.get("module") != ligne["module"]:
+            return jsonify({"erreur": "Accès interdit"}), 403
+
+        # 6. Modifier la note avec une requête paramétrée
+        con.execute(
+            "UPDATE notes SET note = ? WHERE id = ?",
+            (nouvelle_note, note_id)
+        )
         con.commit()
-        # Garde une trace de la modification
-        print("Modification par", request.remote_addr, request.args)
-        return "OK"
-    except Exception as e:
-        # En cas de problème, informe l'utilisateur
-        return str(e), 500
+
+        return jsonify({"message": "Note modifiée"}), 200
+
+    except Exception:
+        app.logger.exception("Erreur lors de la modification d'une note")
+        return jsonify({"erreur": "Une erreur interne est survenue"}), 500
+
+    finally:
+        if con is not None:
+            con.close()
