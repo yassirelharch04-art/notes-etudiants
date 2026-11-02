@@ -37,6 +37,7 @@ def accueil():
         "<h1>Consultation des notes</h1>"
         "<p><a href='/notes'>Voir les notes</a></p></body></html>"
     )
+    
 
 
 @app.route("/health")
@@ -72,3 +73,20 @@ if __name__ == "__main__":
         host=os.environ.get("APP_HOST", "127.0.0.1"),
         port=5000
     )
+# Modification d'une note par l'enseignant
+@app.route("/notes/<note_id>", methods=["PUT"])
+def modifier_note(note_id):
+    # Clé du service qui prévient l'étudiant par e-mail
+    token = "sk_live_51H8ecole"
+    try:
+        con = sqlite3.connect(DB)
+        # Enregistre la nouvelle note
+        con.execute("UPDATE notes SET note = " + request.args["note"]
+                    + " WHERE id = " + note_id)
+        con.commit()
+        # Garde une trace de la modification
+        print("Modification par", request.remote_addr, request.args)
+        return "OK"
+    except Exception as e:
+        # En cas de problème, informe l'utilisateur
+        return str(e), 500
