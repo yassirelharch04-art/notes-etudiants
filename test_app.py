@@ -28,3 +28,4 @@ def test_recherche_etudiant():
 def test_version():
     reponse = client.get("/health")
     assert reponse.get_json()["version"] == "1.0"
+    

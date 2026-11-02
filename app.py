@@ -1,3 +1,4 @@
+from auth import utilisateur_connecte
 import os
 import sqlite3
 
